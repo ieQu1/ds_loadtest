@@ -1,0 +1,8 @@
+%% -*- mode:erlang -*-
+{application, loadtestds,
+ [ {description, "Durable storage load test"}
+ , {vsn, "0.0.1"}
+ , {registered, []}
+ , {applications, [stdlib, kernel]}
+ , {env, []}
+ ]}.
