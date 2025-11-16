@@ -20,7 +20,8 @@ conf() ->
 init() ->
   precondition(anvl_erlc:app_compiled(default, loadtestds)),
   persistent_term:put(node_name_ctr, atomics:new(1, [])),
-  ok = anvl_resource:declare(loadgen, 1).
+  %% Resource that excludes CPU-intensive tasks while running test
+  ok = anvl_resource:declare(cleanroom, 1).
 
 append_test() ->
   experiments:append_test().

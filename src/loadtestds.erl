@@ -69,8 +69,8 @@ test_dbs() ->
 create_dbs() ->
   [create_db(I) || I <- test_dbs()].
 
-open_csv(Experiment, ColumnNames) ->
-  Filename = filename:join(emqx:data_dir(), Experiment ++ ".csv"),
+open_csv(#{csv := Filename}, ColumnNames) ->
+  ok = filelib:ensure_dir(Filename),
   IsNew = not filelib:is_file(Filename),
   {ok, FD} = file:open(Filename, [append]),
   %% Insert CSV header:
@@ -349,9 +349,9 @@ exec_test(CBM, UserOpts) ->
   #{test_timeout := TestTimeout} = Opts =
     maps:merge(Defaults, maps:merge(CBM:defaults(), UserOpts)),
   ExperimentName = CBM:name(),
-  ColumNames = CBM:metric_columns(),
+  ColumnNames = CBM:metric_columns(),
   MeasurementFields = CBM:metric_prefix(Opts),
-  CSV = open_csv(ExperimentName, ColumNames),
+  CSV = open_csv(UserOpts, ColumnNames),
   DatapointPrefix = iolist_to_binary(
                       lists:join(";", [io_lib:format("~p", [I]) || I <- MeasurementFields])),
   io:format("=== Running ~s/~s ===~n", [ExperimentName, DatapointPrefix]),

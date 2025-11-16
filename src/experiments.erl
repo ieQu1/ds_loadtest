@@ -30,7 +30,8 @@
         Script = filename:absname("analysis/histogram.py"),
         CSVs = csv_files(Experiment),
         newer([Script | CSVs], Experiment ++ ".png") andalso
-          anvl_lib:exec(Script, [Experiment, SweepBy | CSVs])
+          anvl_lib:exec(Script,
+                        [Experiment, SweepBy | CSVs])
       end).
 
 ?MEMO(append_throughput,
@@ -53,14 +54,15 @@
               , payload_size => PS
               , repeats => 100
               , n => ?DLOC_SHARDS
-              , batch_size => 1000
+              , batch_size => 10
+              , csv => csv_file(Release, "append")
               })
            || PS <- PSizes])
       end).
 
 ?MEMO(local_system, Release,
       begin
-        precondition(sut_compiled()),
+        precondition(sut_compiled(Release)),
         Dir = release_dir(Release),
         case file:del_dir_r(filename:join(Dir, "data")) of
           ok -> ok;
@@ -106,14 +108,15 @@ db_conf(dloc) ->
    , n_shards => ?DLOC_SHARDS
    }.
 
-?MEMO(run_test, Release, CBM, Cfg = #{db := DB},
+?MEMO(run_test, Release, CBM, Cfg = #{db := DB, csv := CSV},
       begin
         Name = CBM:name(),
         need_retest(Release, Name) andalso
           begin
+            _ = file:delete(CSV),
             precondition(db_created(Release, DB)),
             anvl_resource:with(
-              loadgen,
+              cleanroom,
               fun() ->
                   logger:warning("Running test ~p/~p", [Release, Cfg]),
                   Result = peer:call(
@@ -149,7 +152,7 @@ peer(Release) ->
   anvl_condition:get_result({emqx_system, Release}).
 
 csv_file(Release, Experiment) ->
-  anvl_fn:workdir([Release, "data", Experiment ++ ".csv"]).
+  anvl_fn:workdir(["results", Release, Experiment ++ ".csv"]).
 
 csv_files(Experiment) ->
   [csv_file(I, Experiment) || I <- [experiment, control]].
@@ -167,18 +170,17 @@ root_dir(control) ->
   _ = precondition(anvl_locate:located(?MODULE, control)),
   anvl_locate:dir(?MODULE, control).
 
-?MEMO(sut_compiled,
-      precondition([sut_compiled(control), sut_compiled(experiment)])).
-
 ?MEMO(sut_compiled, Release,
       begin
         Dir = root_dir(Release),
         Dst = filename:join(Dir, ".compiled@"),
         {ok, Sources} = anvl_git:ls_files(Dir, [other, {x, ".compiled@"}]),
         newer(Sources, Dst) andalso
-          begin
-            anvl_lib:exec("make", [], [{cd, Dir}]),
-            file:write_file(Dst, []),
-            true
-          end
+          anvl_resource:with(
+            cleanroom,
+            fun() ->
+                anvl_lib:exec("make", [], [{cd, Dir}]),
+                file:write_file(Dst, []),
+                true
+            end)
       end).
