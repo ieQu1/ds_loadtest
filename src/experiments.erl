@@ -27,7 +27,7 @@
 
 ?MEMO(vs_graph, Experiment, SweepBy,
       begin
-        Script = filename:absname("histogram.py"),
+        Script = filename:absname("analysis/histogram.py"),
         CSVs = csv_files(Experiment),
         newer([Script | CSVs], Experiment ++ ".png") andalso
           anvl_lib:exec(Script, [Experiment, SweepBy | CSVs])
@@ -35,7 +35,7 @@
 
 ?MEMO(append_throughput,
       begin
-        Script = filename:absname("append_throughput.py"),
+        Script = filename:absname("analysis/append_throughput.py"),
         Out = "append_throughput.png",
         CSVs = csv_files("append"),
         newer([Script | CSVs], Out) andalso
@@ -60,6 +60,7 @@
 
 ?MEMO(local_system, Release,
       begin
+        precondition(sut_compiled()),
         Dir = release_dir(Release),
         case file:del_dir_r(filename:join(Dir, "data")) of
           ok -> ok;
@@ -153,7 +154,34 @@ csv_file(Release, Experiment) ->
 csv_files(Experiment) ->
   [csv_file(I, Experiment) || I <- [experiment, control]].
 
-release_dir(experiment) ->
-  "/home/me/Documents/work/emqx/_build/emqx-enterprise/rel/emqx";
-release_dir(control) ->
-  "/home/me/Documents/work/emqx-rel60/_build/emqx-enterprise/rel/emqx".
+release_dir(Release) ->
+  filename:join(root_dir(Release), "_build/emqx-enterprise/rel/emqx").
+
+root_dir(experiment) ->
+  Dir = filename:join(anvl_project:root(), "SUT"),
+  filelib:is_dir(Dir) orelse
+    ?UNSAT("Symlink EMQX under development to ./SUT", []),
+  Dir;
+root_dir(control) ->
+  _ = precondition(anvl_locate:located(?MODULE, control)),
+  anvl_locate:dir(?MODULE, control).
+
+?MEMO(sut_compiled,
+      precondition([sut_compiled(control), sut_compiled(experiment)])).
+
+?MEMO(sut_compiled, Release,
+      begin
+        Dir = root_dir(Release),
+        %% FIXME: untracked files too
+        {0, Sources0} = anvl_lib:exec_("git",
+                                       ["ls-files", "-c", "--exclude-standard"],
+                                       [collect_output, {cd, Dir}]),
+        Sources = [filename:absname(I, Dir) || I <- Sources0],
+        Dst = filename:join(Dir, ".compiled@"),
+        newer(Sources, Dst) andalso
+          begin
+            anvl_lib:exec("make", [], [{cd, Dir}]),
+            file:write_file(Dst, []),
+            true
+          end
+      end).

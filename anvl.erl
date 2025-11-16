@@ -1,7 +1,7 @@
 -include("anvl.hrl").
 
 conf() ->
-  #{ plugins => [anvl_erlc]
+  #{ plugins => [anvl_erlc, anvl_git]
    , erlang =>
        #{ includes => [ "../emqx/apps/emqx_durable_storage/include"
                       , "${src_root}/include"
@@ -10,6 +10,11 @@ conf() ->
                       ]
         }
    , conditions => [append_test]
+   , [deps, git] =>
+       [#{ id => control
+         , repo => "https://github.com/emqx/emqx.git"
+         , ref => {branch, "release-60"}
+         }]
    }.
 
 init() ->
