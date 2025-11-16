@@ -149,13 +149,14 @@ peer(Release) ->
   anvl_condition:get_result({emqx_system, Release}).
 
 csv_file(Release, Experiment) ->
-  filename:join([release_dir(Release), "data", Experiment ++ ".csv"]).
+  anvl_fn:workdir([Release, "data", Experiment ++ ".csv"]).
 
 csv_files(Experiment) ->
   [csv_file(I, Experiment) || I <- [experiment, control]].
 
 release_dir(Release) ->
-  filename:join(root_dir(Release), "_build/emqx-enterprise/rel/emqx").
+  anvl_fn:ensure_type(filename:join(root_dir(Release), "_build/emqx-enterprise/rel/emqx"),
+                      list).
 
 root_dir(experiment) ->
   Dir = filename:join(anvl_project:root(), "SUT"),
@@ -172,12 +173,8 @@ root_dir(control) ->
 ?MEMO(sut_compiled, Release,
       begin
         Dir = root_dir(Release),
-        %% FIXME: untracked files too
-        {0, Sources0} = anvl_lib:exec_("git",
-                                       ["ls-files", "-c", "--exclude-standard"],
-                                       [collect_output, {cd, Dir}]),
-        Sources = [filename:absname(I, Dir) || I <- Sources0],
         Dst = filename:join(Dir, ".compiled@"),
+        {ok, Sources} = anvl_git:ls_files(Dir, [other, {x, ".compiled@"}]),
         newer(Sources, Dst) andalso
           begin
             anvl_lib:exec("make", [], [{cd, Dir}]),
