@@ -9,11 +9,11 @@ conf() ->
                       , anvl_project:anvl_includes_dir()
                       ]
         }
-   , conditions => [append_test]
+   , conditions => [append_test, append_profile]
    , [deps, git] =>
        [#{ id => control
          , repo => "https://github.com/emqx/emqx.git"
-         , ref => {branch, "release-60"}
+         , ref => {tag, "e6.0.1"}
          }]
    }.
 
@@ -25,3 +25,6 @@ init() ->
 
 append_test() ->
   experiments:append_test().
+
+append_profile() ->
+  experiments:append_profile().

@@ -7,9 +7,9 @@
 -include("emqx_ds.hrl").
 
 %% API:
--export([peer/1, append_test/0]).
+-export([peer/1, append_test/0, append_profile/0]).
 
--define(DLOC_SHARDS, 2).
+-define(DLOC_SHARDS, 16).
 
 %%================================================================================
 %% API functions
@@ -19,6 +19,20 @@
       begin
         precondition([append_test(I, dloc) || I <- [experiment, control]]),
         precondition([vs_graph("append", "PayloadSize"), append_throughput()])
+      end).
+
+?MEMO(append_profile,
+      begin
+        precondition(
+          run_test(
+             experiment,
+             experiment_append,
+             #{ db => dloc
+              , payload_size => 1000
+              , repeats => 10000000
+              , n => ?DLOC_SHARDS
+              , batch_size => 100
+              }))
       end).
 
 %%================================================================================
@@ -45,16 +59,16 @@
 
 ?MEMO(append_test, Release, DB,
       begin
-        PSizes = [0, 100, 1_000, 100_000],
+        PSizes = [0, 100, 1_000, 10_000],
         precondition(
           [run_test(
              Release,
              experiment_append,
              #{ db => DB
               , payload_size => PS
-              , repeats => 100
+              , repeats => 500
               , n => ?DLOC_SHARDS
-              , batch_size => 10
+              , batch_size => 100
               , csv => csv_file(Release, "append")
               })
            || PS <- PSizes])
@@ -69,7 +83,7 @@
           {error, enoent} -> ok
         end,
         NodeName = get_node_name(),
-        EmuFlags = "+JPperf true -pz " ++ loadgen_app_path(),
+        EmuFlags = "+JPperf true +SDio 16 -pz " ++ loadgen_app_path(),
         Env = [ {"EMQX_NODE__NAME", NodeName}
               , {"ERL_FLAGS", EmuFlags}
               , {"EMQX_dashboard__listeners__http__bind", "0"}
