@@ -1,0 +1,7 @@
+#+TITLE: EMQX Durable Storage Benchmarking Tool
+
+Usage:
+
+1. Install [[https://github.com/k32/anvl?tab=readme-ov-file#installation][ANVL]]
+2. Symlink EMQX directory under test as =./SUT=
+3. Run =anvl=
