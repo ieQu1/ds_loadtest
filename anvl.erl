@@ -9,7 +9,7 @@ conf() ->
                       , anvl_project:anvl_includes_dir()
                       ]
         }
-   , conditions => [append_test]
+   , conditions => [append_test, overwrite_test]
    , [deps, git] =>
        [#{ id => control
          , repo => "https://github.com/emqx/emqx.git"
@@ -25,3 +25,6 @@ init() ->
 
 append_test() ->
   experiments:append_test().
+
+overwrite_test() ->
+  experiments:overwrite_test().

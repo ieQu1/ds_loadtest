@@ -21,11 +21,11 @@
 -define(MRIA_SHARD, otx_test_shard).
 
 with_metric(Metric, Fun) ->
-  T0 = erlang:system_time(microsecond),
+  T0 = os:perf_counter(microsecond),
   try
     Fun()
   after
-    T1 = erlang:system_time(microsecond),
+    T1 = os:perf_counter(microsecond),
     report_metric(Metric, T1 - T0)
   end.
 

@@ -7,7 +7,7 @@
 -include("emqx_ds.hrl").
 
 %% API:
--export([peer/1, append_test/0]).
+-export([peer/1, append_test/0, overwrite_test/0]).
 
 -define(DLOC_SHARDS, 2).
 
@@ -19,6 +19,12 @@
       begin
         precondition([append_test(I, dloc) || I <- [experiment, control]]),
         precondition([vs_graph("append", "PayloadSize"), append_throughput()])
+      end).
+
+?MEMO(overwrite_test,
+      begin
+        precondition([overwrite_test(I, dloc) || I <- [experiment, control]]),
+        precondition([vs_graph("overwrite", "Npubs")])
       end).
 
 %%================================================================================
@@ -58,6 +64,21 @@
               , csv => csv_file(Release, "append")
               })
            || PS <- PSizes])
+      end).
+
+?MEMO(overwrite_test, Release, DB,
+      begin
+        precondition(
+          [run_test(
+             Release,
+             experiment_overwrite,
+             #{ db => DB
+              , payload_size => 1000
+              , n => N
+              , csv => csv_file(Release, "overwrite")
+              , repeats => 10
+              })
+           || N <- [10]])
       end).
 
 ?MEMO(local_system, Release,
@@ -106,6 +127,13 @@ db_conf(dloc) ->
    , type => ds
    , subscriptions => #{n_workers_per_shard => 0}
    , n_shards => ?DLOC_SHARDS
+   };
+db_conf(draft_append) ->
+  #{ backend => builtin_raft
+   , type => ds
+   , subscriptions => #{n_workers_per_shard => 32, n_rt_workers => 0}
+   , storage => {emqx_ds_storage_skipstream_lts_v2, #{timestamp_bytes => 1}}
+   , transacations => #{idle_flush_interval => 0}
    }.
 
 ?MEMO(run_test, Release, CBM, Cfg = #{db := DB, csv := CSV},
