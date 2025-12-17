@@ -14,30 +14,19 @@
 -define(MRIA_SHARD, otx_test_shard).
 
 create_db(UserOpts = #{db := DB, type := ds}) ->
-    DB = maps:get(db, UserOpts, t),
-    Defaults = #{
-        backend => builtin_raft,
-        n_shards => 16,
-        replication_options => #{},
-        n_sites => 5,
-        replication_factor => 5,
-        storage => {emqx_ds_storage_skipstream_lts_v2, #{}},
-        transaction => #{flush_interval => 1, idle_flush_interval => 0, conflict_window => 10_000},
-        reads => local_preferred
-    },
-    Opts = emqx_utils_maps:deep_merge(Defaults, maps:remove(db, UserOpts)),
-    multicall(fun() -> emqx_ds:open_db(DB, Opts), emqx_ds:wait_db(DB, all, infinity) end);
+  Opts = maps:remove(db, UserOpts),
+  multicall(fun() -> emqx_ds:open_db(DB, Opts), emqx_ds:wait_db(DB, all, infinity) end);
 create_db(UserOpts = #{db := DB, type := mria}) ->
-    Opts = maps:merge(
-        #{type => ordered_set, storage => rocksdb_copies, rlog_shard => ?MRIA_SHARD},
-        maps:without([db, rlog_shard, type], UserOpts)
-    ),
-    multicall(
-        fun() ->
-            ok = mria:create_table(DB, maps:to_list(Opts)),
-            ok = mria:wait_for_tables([DB])
-        end
-    ).
+  Opts = maps:merge(
+      #{type => ordered_set, storage => rocksdb_copies, rlog_shard => ?MRIA_SHARD},
+      maps:without([db, rlog_shard, type], UserOpts)
+  ),
+  multicall(
+      fun() ->
+          ok = mria:create_table(DB, maps:to_list(Opts)),
+          ok = mria:wait_for_tables([DB])
+      end
+  ).
 
 test_dbs() ->
   [ #{type => mria, db => md, storage => disc_copies}

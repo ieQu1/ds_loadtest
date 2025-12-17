@@ -111,7 +111,21 @@ load_test_code(Peer) ->
 ?MEMO(db_created, Release, DB,
       begin
         precondition(local_system(Release)),
-        Conf = maps:merge(db_conf(DB), #{db => DB}),
+        Defaults = #{ db => DB
+                    , backend => builtin_raft
+                    , n_shards => 16
+                    , replication_options => #{}
+                    , n_sites => 5
+                    , replication_factor => 5
+                    , storage => {emqx_ds_storage_skipstream_lts_v2, #{}}
+                    , transaction => #{ flush_interval => 1
+                                      , idle_flush_interval => 0
+                                      , conflict_window => 10_000
+                                      }
+                    , reads => local_preferred
+                    },
+        Conf = maps:merge(Defaults, db_conf(DB)),
+        Id = dslt_collect:decl_db(Conf),
         ok = peer:call(peer(Release), loadtestds, create_db, [Conf], infinity),
         true
       end).

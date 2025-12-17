@@ -6,13 +6,13 @@
 -behavior(gen_server).
 
 %% API:
--export([start_link/0]).
+-export([decl_db/1]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 %% internal exports:
--export([]).
+-export([start_link/0]).
 
 -export_type([]).
 
@@ -29,6 +29,10 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-spec decl_db(map()) -> integer().
+decl_db(DBSpec) ->
+  gen_server:call(?SERVER, {decl_db, DBSpec}, infinity).
 
 %%================================================================================
 %% behavior callbacks
@@ -49,6 +53,25 @@ init(_) ->
         },
   {ok, S}.
 
+handle_call({decl_db, DBSpec}, _From, S = #s{odbc = Pid}) ->
+  #{db := DB, backend := Backend, n_shards := Nshards} = DBSpec,
+  Nrepl = maps:get(replication_factor, DBSpec, 0),
+  DBstr = atom_to_binary(DB),
+  BackendStr = atom_to_binary(Backend),
+  Config = iolist_to_binary(io_lib:format("~p", [DBSpec])),
+  Q = """
+      SELECT db_id(?, ?, ?, ?, ?)
+      """,
+  {selected, _, [{Id}]} = odbc:param_query(
+                            Pid,
+                            Q,
+                            [ {{sql_char, size(DBstr)}, [DBstr]}
+                            , {{sql_char, size(BackendStr)}, [BackendStr]}
+                            , {sql_smallint, [Nshards]}
+                            , {sql_smallint, [Nrepl]}
+                            , {{sql_char, size(Config)}, [Config]}
+                            ]),
+  {reply, Id, S};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
