@@ -1,7 +1,7 @@
 -include("anvl.hrl").
 
 conf() ->
-  #{ plugins => [anvl_erlc, anvl_git]
+  #{ plugins => [anvl_erlc, anvl_git, dslt_experiments]
    , erlang =>
        #{ includes => [ "../emqx/apps/emqx_durable_storage/include"
                       , "${src_root}/include"
@@ -11,17 +11,12 @@ conf() ->
         }
    , conditions => [append_test, overwrite_test]
    , [deps, git] =>
-       [#{ id => control
-         , repo => "https://github.com/emqx/emqx.git"
-         , ref => {branch, "release-60"}
-         }]
+       [ #{ id => control
+          , repo => "https://github.com/emqx/emqx.git"
+          , ref => {branch, "release-60"}
+          }
+       ]
    }.
-
-init() ->
-  precondition([anvl_erlc:app_compiled(default, dslt_analysis), anvl_erlc:app_compiled(default, dslt_experiments)]),
-  persistent_term:put(node_name_ctr, atomics:new(1, [])),
-  %% Resource that excludes CPU-intensive tasks while running test
-  ok = anvl_resource:declare(cleanroom, 1).
 
 append_test() ->
   experiments:append_test().

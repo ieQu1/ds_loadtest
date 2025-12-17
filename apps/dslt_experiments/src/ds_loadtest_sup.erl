@@ -3,11 +3,10 @@
 %%--------------------------------------------------------------------
 -module(ds_loadtest_sup).
 
-
 -behavior(supervisor).
 
 %% API:
--export([start_link/4, stop/0, start_workers/1]).
+-export([start_link/0, start_link/4, stop/0, start_workers/1]).
 
 %% behavior callbacks:
 -export([init/1]).
@@ -25,10 +24,14 @@
 %% API functions
 %%================================================================================
 
+-define(TOP, ds_loadtest_top).
 -define(SUP, ?MODULE).
 
+start_link() ->
+  supervisor:start_link({local, ?TOP}, ?MODULE, top).
+
 start_link(CBM, Opts = #{n := N}, Parent, Trigger) ->
-  {ok, Top} = supervisor:start_link({local, ?SUP}, ?MODULE, {top, CBM, Opts, Parent, Trigger}),
+  {ok, Top} = supervisor:start_link({local, ?SUP}, ?MODULE, {experiment, CBM, Opts, Parent, Trigger}),
   [{ok, _} = supervisor:start_child(Top, [I]) || I <- lists:seq(0, N - 1)],
   {ok, Top}.
 
@@ -53,7 +56,20 @@ start_workers(CBM, Opts, Parent, Trigger, MyId) ->
 %% behavior callbacks
 %%================================================================================
 
-init({top, CBM, Opts, Parent, Trigger}) ->
+init(top) ->
+  Children = [ #{ id => collector
+                , type => worker
+                , restart => permanent
+                , start => {dslt_collect, start_link, []}
+                , shutdown => 5_000
+                }
+             ],
+  SupFlags = #{ strategy      => rest_for_one
+              , intensity     => 10
+              , period        => 10
+              },
+  {ok, {SupFlags, Children}};
+init({experiment, CBM, Opts, Parent, Trigger}) ->
   Children = [#{ id => worker
                , type => supervisor
                , shutdown => infinity

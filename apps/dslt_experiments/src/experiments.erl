@@ -95,12 +95,11 @@
                                     }),
         anvl_condition:set_result({emqx_system, Release}, Peer),
         load_test_code(Peer),
-        ok = peer:call(Peer, application, start, [dslt_experiments]),
         true
       end).
 
 data_dir(Release) ->
-  Base = os:getenv("DSLT_data_dir", anvl_fn:workdir(["dslt"])),
+  Base = anvl_plugin:conf([dslt, data_dir]),
   filename:join([Base, "emqx_data", atom_to_list(Release)]).
 
 %% TODO: application controller doesn't do that automatically?

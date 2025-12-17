@@ -1,3 +1,4 @@
 {application, dslt_experiments,
- [ {applications, [kernel, stdlib]}
+ [ {applications, [kernel, stdlib, odbc, dslt_analysis]}
+ , {mod, {dslt_experiments_app, []}}
  ]}.
