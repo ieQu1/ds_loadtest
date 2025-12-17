@@ -7,7 +7,7 @@
 -behavior(supervisor).
 
 %% API:
--export([start_link/4]).
+-export([start_link/4, stop/0, start_workers/1]).
 
 %% behavior callbacks:
 -export([init/1]).
@@ -32,6 +32,20 @@ start_link(CBM, Opts = #{n := N}, Parent, Trigger) ->
   [{ok, _} = supervisor:start_child(Top, [I]) || I <- lists:seq(0, N - 1)],
   {ok, Top}.
 
+stop() ->
+  maybe
+    Pid = whereis(?SUP),
+    true ?= is_pid(Pid),
+    unlink(Pid),
+    exit(Pid, shutdown)
+  end.
+
+start_workers(I) when I =< 0 ->
+  ok;
+start_workers(I) ->
+  supervisor:start_child(?SUP, [I]),
+  start_workers(I - 1).
+
 start_workers(CBM, Opts, Parent, Trigger, MyId) ->
   supervisor:start_link(?MODULE, {worker, CBM, Opts, Parent, Trigger, MyId}).
 
@@ -54,13 +68,12 @@ init({top, CBM, Opts, Parent, Trigger}) ->
   {ok, {SupFlags, Children}};
 init({worker, CBM, Opts, Parent, Trigger, MyId}) ->
   #{n_nodes := NNodes, available_nodes := NodeAvail} = Opts,
-  SupFlags = #{
-               strategy => one_for_one,
-               intensity => 10,
-               period => 1,
-               auto_shutdown => all_significant
+  SupFlags = #{ strategy => one_for_one
+              , intensity => 10
+              , period => 1
+              , auto_shutdown => all_significant
               },
- {Nodes, _} = lists:split(NNodes, shuffle(NodeAvail)),
+  {Nodes, _} = lists:split(NNodes, shuffle(NodeAvail)),
   Children = [#{ id => Node
                , type => worker
                , restart => temporary

@@ -1,7 +1,5 @@
 -module(loadtestds).
 
--behavior(supervisor).
-
 %% API:
 -export([ create_db/1
         , test_dbs/0
@@ -14,7 +12,7 @@
         ]).
 
 %% Test setup and supervisor callbacks:
--export([init/1, start_worker/6, worker_entrypoint/5]).
+-export([start_worker/6, worker_entrypoint/5]).
 
 -include("loadtestds.hrl").
 
@@ -318,11 +316,11 @@ open_csv(#{csv := Filename}, ColumnNames) ->
         , csv_fd :: file:iodevice()
         , csv_prefix :: binary()
         , t0 :: integer()
-        , mref :: reference() | undefined
         , timeout :: timeout()
         , run_time :: non_neg_integer() | undefined
         , opts :: map()
         , cbm :: module()
+        , n_remaining :: non_neg_integer()
         }).
 
 %% 1. Start a supervision tree with `n_nodes' copies on random nodes
@@ -347,7 +345,7 @@ exec_test(CBM, UserOpts) ->
               , n_nodes => 1
               , test_timeout => infinity
               },
-  #{test_timeout := TestTimeout} = Opts =
+  #{test_timeout := TestTimeout, n := N} = Opts =
     maps:merge(Defaults, maps:merge(CBM:defaults(), UserOpts)),
   ExperimentName = CBM:name(),
   ColumnNames = CBM:metric_columns(),
@@ -365,9 +363,9 @@ exec_test(CBM, UserOpts) ->
                            end
                        end),
   %% Start the workers:
-  {ok, Top} = supervisor:start_link(?MODULE, {top, CBM, Opts, self(), Trigger}),
+  {ok, Top} = ds_loadtest_sup:start_link(CBM, Opts, self(), Trigger),
+  ds_loadtest_sup:start_workers(N),
   io:format("Ensemble is ready: ~p~n", [Top]),
-  MRef = monitor(process, Top),
   unlink(Top),
   %% Now when the setup is complete, let's broadcast that it's time
   %% to start the test:
@@ -378,34 +376,31 @@ exec_test(CBM, UserOpts) ->
     } = collect_replies(#s{ csv_fd = CSV
                           , csv_prefix = DatapointPrefix
                           , t0 = erlang:system_time(microsecond)
-                          , mref = MRef
                           , timeout = TestTimeout
                           , opts = Opts
                           , cbm = CBM
+                          , n_remaining = N
                           }),
   io:format(CSV, "~s;~p;~p~n", [DatapointPrefix, run_time, RunTime]),
   %% Shutdown the sup in case of timeout:
-  exit(Top, shutdown),
+  ds_loadtest_sup:stop(),
   ok = file:sync(CSV),
   ok = file:close(CSV),
   Success.
 
+collect_replies(#s{n_remaining = 0, t0 = T0, success = Success, cbm = CBM, opts = Opts} = S) ->
+  Dt = erlang:system_time(microsecond) - T0,
+  io:format("Complete in ~p s~n~p~n", [Dt / 1_000_000, Success]),
+  CBM:post_test(Opts, Dt),
+  S#s{run_time = Dt};
 collect_replies(#s{ timeout = Timeout
-                  , mref = MRef
-                  , t0 = T0
                   , csv_fd = FD
                   , csv_prefix = Prefix
-                  , opts = Opts
-                  , cbm = CBM
+                  , n_remaining = N
                   } = S) ->
   receive
-    {'DOWN', MRef, process, _, Reason} ->
-      %% Supervisor has stopped, everything's done:
-      Dt = erlang:system_time(microsecond) - T0,
-      io:format("Complete in ~p s~n~p~n", [Dt / 1_000_000, Reason]),
-      CBM:post_test(Opts, Dt),
-      %% Wait a little more to collect the rest of the messages:
-      collect_replies(S#s{timeout = 1000, run_time = Dt});
+    worker_done ->
+      collect_replies(S#s{n_remaining = N - 1});
     {metric, M, Val} ->
       io:format(FD, "~s;~p;~p~n", [Prefix, M, Val]),
       collect_replies(S);
@@ -421,44 +416,12 @@ report_metric(Metric, Val) ->
 report_fail(Reason) ->
   get(parent) ! {fail, Reason}.
 
+report_complete() ->
+  get(parent) ! worker_done.
+
 %%-----------------------------------------------------------------------------------------------------------
 %% Supervisor
 %%-----------------------------------------------------------------------------------------------------------
-
-init({top, CBM, Opts0 = #{n := N}, Parent, Trigger}) ->
-  Opts = CBM:init(Opts0),
-  SupFlags = #{ strategy => one_for_one
-              , intensity => 10
-              , period => 1
-              , auto_shutdown => all_significant
-              },
-  Children = [#{ id => I
-               , type => supervisor
-               , shutdown => infinity
-               , restart => temporary
-               , start => {supervisor, start_link, [?MODULE, {worker, CBM, Opts, Parent, Trigger, I}]}
-               , significant => true
-               }
-              || I <- lists:seq(0, N - 1)],
-    {ok, {SupFlags, Children}};
-init({worker, CBM, Opts, Parent, Trigger, MyId}) ->
-  #{n_nodes := NNodes, available_nodes := NodeAvail} = Opts,
-  SupFlags = #{
-               strategy => one_for_one,
-               intensity => 10,
-               period => 1,
-               auto_shutdown => all_significant
-              },
-  {Nodes, _} = lists:split(NNodes, shuffle(NodeAvail)),
-  Children = [#{ id => Node
-               , type => worker
-               , restart => temporary
-               , start => {?MODULE, start_worker, [Node, CBM, Opts, MyId, Parent, Trigger]}
-               , shutdown => 100
-               , significant => true
-               }
-              || Node <- Nodes],
-  {ok, {SupFlags, Children}}.
 
 start_worker(Node, CBM, Opts, N, Parent, Trigger) ->
   Fun = fun CBM:loop/3,
@@ -479,6 +442,8 @@ worker_entrypoint(Fun, Opts = #{repeats := Repeats}, MyId, Parent, Trigger) ->
             catch EC:Err:Stack ->
                 logger:error("Test worker ~p failed with reason ~p:~p~nStack: ~p", [MyId, EC, Err, Stack]),
                 report_fail({EC, Err})
+            after
+              report_complete()
             end
     end.
 

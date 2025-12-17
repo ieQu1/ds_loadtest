@@ -28,8 +28,8 @@
       begin
         Releases = [experiment, control],
         precondition([overwrite_test(I, dloverwrite32) || I <- Releases]),
-        precondition([ dslt_analysis:vs_graph("overwrite", "Npubs", Releases)
-                     , dslt_analysis:throughput("overwrite", "Npubs", Releases)
+        precondition([ dslt_analysis:vs_graph("overwrite", "PayloadSize", Releases)
+                     , dslt_analysis:throughput("overwrite", "PayloadSize", Releases)
                      ])
       end).
 
@@ -61,27 +61,30 @@
              Release,
              experiment_overwrite,
              #{ db => DB
-              , payload_size => 1000
+              , payload_size => PS
               , n => N
               , csv => csv_file(Release, "overwrite")
-              , repeats => 5000
+              , repeats => 10
               })
-           || N <- [10, 100, 1000]])
+           || N <- [1_000],
+              PS <- [10, 100, 1000]])
       end).
 
 ?MEMO(local_system, Release,
       begin
         precondition(sut_compiled(Release)),
         Dir = release_dir(Release),
-        case file:del_dir_r(filename:join(Dir, "data")) of
+        DataDir = data_dir(Release),
+        case file:del_dir_r(DataDir) of
           ok -> ok;
           {error, enoent} -> ok
         end,
         NodeName = get_node_name(),
-        EmuFlags = "+JPperf true -pz " ++ loadgen_app_path(),
+        EmuFlags = "+SDio 64 +JPperf true -pz " ++ loadgen_app_path(),
         Env = [ {"EMQX_NODE__NAME", NodeName}
               , {"ERL_FLAGS", EmuFlags}
               , {"EMQX_dashboard__listeners__http__bind", "0"}
+              , {"EMQX_node__data_dir", DataDir}
               ] ++
               [{"EMQX_listeners__" ++ L ++ "__default__enable", "false"}
                || L <- ["tcp", "ssl", "ws", "wss"]],
@@ -97,7 +100,8 @@
       end).
 
 data_dir(Release) ->
-  os:getenv("DSLT_data_dir", anvl_fn:workdir([""], string)).
+  Base = os:getenv("DSLT_data_dir", anvl_fn:workdir(["dslt"])),
+  filename:join([Base, "emqx_data", atom_to_list(Release)]).
 
 %% TODO: application controller doesn't do that automatically?
 load_test_code(Peer) ->
@@ -122,7 +126,7 @@ db_conf(dloc) ->
 db_conf(draft_append) ->
   #{ backend => builtin_raft
    , type => ds
-   , subscriptions => #{n_workers_per_shard => 32, n_rt_workers => 0}
+   , subscriptions => #{n_workers_per_shard => 32}
    , storage => {emqx_ds_storage_skipstream_lts_v2, #{timestamp_bytes => 1}}
    , transacations => #{idle_flush_interval => 0}
    };
