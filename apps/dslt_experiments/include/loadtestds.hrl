@@ -16,7 +16,7 @@
 -ifndef(LOADTESTDS_HRL).
 -define(LOADTESTDS_HRL, true).
 
--define(with_metric(METRIC, BODY), loadtestds:with_metric(METRIC, fun() -> BODY end)).
+-define(with_metric(METRIC, BODY), dslt_worker:with_metric(METRIC, fun() -> BODY end)).
 -include("emqx_ds.hrl").
 
 -endif.

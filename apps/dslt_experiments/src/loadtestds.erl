@@ -7,25 +7,11 @@
         %% , counter_test/1
         %% , owned_counter_test/1
         , exec_test/2
-        , with_metric/2
-        , report_metric/2
         ]).
-
-%% Test setup and supervisor callbacks:
--export([start_worker/6, worker_entrypoint/5]).
 
 -include("loadtestds.hrl").
 
 -define(MRIA_SHARD, otx_test_shard).
-
-with_metric(Metric, Fun) ->
-  T0 = os:perf_counter(microsecond),
-  try
-    Fun()
-  after
-    T1 = os:perf_counter(microsecond),
-    report_metric(Metric, T1 - T0)
-  end.
 
 create_db(UserOpts = #{db := DB, type := ds}) ->
     DB = maps:get(db, UserOpts, t),
@@ -409,47 +395,6 @@ collect_replies(#s{ timeout = Timeout
   after Timeout ->
       S
   end.
-
-report_metric(Metric, Val) ->
-  get(parent) ! {metric, Metric, Val}.
-
-report_fail(Reason) ->
-  get(parent) ! {fail, Reason}.
-
-report_complete() ->
-  get(parent) ! worker_done.
-
-%%-----------------------------------------------------------------------------------------------------------
-%% Supervisor
-%%-----------------------------------------------------------------------------------------------------------
-
-start_worker(Node, CBM, Opts, N, Parent, Trigger) ->
-  Fun = fun CBM:loop/3,
-  Pid = proc_lib:spawn_link(Node, ?MODULE, worker_entrypoint, [Fun, Opts, N, Parent, Trigger]),
-  {ok, Pid}.
-
-worker_entrypoint(Fun, Opts = #{repeats := Repeats}, MyId, Parent, Trigger) ->
-    MRef = monitor(process, Trigger),
-    put(parent, Parent),
-    receive
-        {'DOWN', MRef, process, Trigger, _} ->
-            try
-              lists:foldl(
-                fun(_, Acc) -> Fun(MyId, Opts, Acc) end,
-                undefined,
-                lists:seq(1, Repeats)
-               )
-            catch EC:Err:Stack ->
-                logger:error("Test worker ~p failed with reason ~p:~p~nStack: ~p", [MyId, EC, Err, Stack]),
-                report_fail({EC, Err})
-            after
-              report_complete()
-            end
-    end.
-
-shuffle(L) ->
-    {_, Ret} = lists:unzip(lists:sort([{rand:uniform(), I} || I <- L])),
-    Ret.
 
 clear_table(#{type := mria, db := DB}) ->
     mria:clear_table(DB);

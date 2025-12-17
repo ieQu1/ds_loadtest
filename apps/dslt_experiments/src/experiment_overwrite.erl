@@ -77,8 +77,8 @@ post_test(#{payload_size := PS, n := Nworkers, repeats := Repeats}, Time) ->
   %% Note: B/μs = MB/S
   io:format("Written ~p MB~nTime: ~ps~nThroughput ~p MB/s~n",
             [BytesWritten / 1_000_000, Time / 1_000_000, Throughput]),
-  loadtestds:report_metric(throughput, Throughput),
-  loadtestds:report_metric(tps, 1_000_000 * Nworkers * Repeats / Time).
+  dslt_worker:report_metric(throughput, Throughput),
+  dslt_worker:report_metric(tps, 1_000_000 * Nworkers * Repeats / Time).
 
 %%================================================================================
 %% Internal exports

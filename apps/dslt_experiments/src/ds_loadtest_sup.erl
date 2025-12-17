@@ -77,7 +77,7 @@ init({worker, CBM, Opts, Parent, Trigger, MyId}) ->
   Children = [#{ id => Node
                , type => worker
                , restart => temporary
-               , start => {loadtestds, start_worker, [Node, CBM, Opts, MyId, Parent, Trigger]}
+               , start => {dslt_worker, start, [Node, CBM, Opts, MyId, Parent, Trigger]}
                , shutdown => 100
                , significant => true
                }
