@@ -7,7 +7,7 @@
 -include("emqx_ds.hrl").
 
 %% API:
--export([peer/1, append_test/0, overwrite_test/0]).
+-export([peer/1, csv_file/2, append_test/0, overwrite_test/0]).
 
 -define(DLOC_SHARDS, 2).
 
@@ -17,37 +17,25 @@
 
 ?MEMO(append_test,
       begin
-        precondition([append_test(I, dloc) || I <- [experiment, control]]),
-        precondition([vs_graph("append", "PayloadSize"), append_throughput()])
+        Releases = [experiment, control],
+        precondition([append_test(I, dloc) || I <- Releases]),
+        precondition([ dslt_analysis:vs_graph("append", "PayloadSize", Releases)
+                     , dslt_analysis:throughput("append", "PayloadSize", Releases)
+                     ])
       end).
 
 ?MEMO(overwrite_test,
       begin
-        precondition([overwrite_test(I, dloc) || I <- [experiment, control]]),
-        precondition([vs_graph("overwrite", "Npubs")])
+        Releases = [experiment, control],
+        precondition([overwrite_test(I, dloverwrite32) || I <- Releases]),
+        precondition([ dslt_analysis:vs_graph("overwrite", "Npubs", Releases)
+                     , dslt_analysis:throughput("overwrite", "Npubs", Releases)
+                     ])
       end).
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
-
-?MEMO(vs_graph, Experiment, SweepBy,
-      begin
-        Script = filename:absname("analysis/histogram.py"),
-        CSVs = csv_files(Experiment),
-        newer([Script | CSVs], Experiment ++ ".png") andalso
-          anvl_lib:exec(Script,
-                        [Experiment, SweepBy | CSVs])
-      end).
-
-?MEMO(append_throughput,
-      begin
-        Script = filename:absname("analysis/append_throughput.py"),
-        Out = "append_throughput.png",
-        CSVs = csv_files("append"),
-        newer([Script | CSVs], Out) andalso
-          anvl_lib:exec(Script, [Out | CSVs])
-      end).
 
 ?MEMO(append_test, Release, DB,
       begin
@@ -58,9 +46,9 @@
              experiment_append,
              #{ db => DB
               , payload_size => PS
-              , repeats => 100
+              , repeats => 1000
               , n => ?DLOC_SHARDS
-              , batch_size => 10
+              , batch_size => 100
               , csv => csv_file(Release, "append")
               })
            || PS <- PSizes])
@@ -76,9 +64,9 @@
               , payload_size => 1000
               , n => N
               , csv => csv_file(Release, "overwrite")
-              , repeats => 10
+              , repeats => 5000
               })
-           || N <- [10]])
+           || N <- [10, 100, 1000]])
       end).
 
 ?MEMO(local_system, Release,
@@ -104,9 +92,12 @@
                                     }),
         anvl_condition:set_result({emqx_system, Release}, Peer),
         load_test_code(Peer),
-        ok = peer:call(Peer, application, start, [loadtestds]),
+        ok = peer:call(Peer, application, start, [dslt_experiments]),
         true
       end).
+
+data_dir(Release) ->
+  os:getenv("DSLT_data_dir", anvl_fn:workdir([""], string)).
 
 %% TODO: application controller doesn't do that automatically?
 load_test_code(Peer) ->
@@ -134,7 +125,18 @@ db_conf(draft_append) ->
    , subscriptions => #{n_workers_per_shard => 32, n_rt_workers => 0}
    , storage => {emqx_ds_storage_skipstream_lts_v2, #{timestamp_bytes => 1}}
    , transacations => #{idle_flush_interval => 0}
-   }.
+   };
+db_conf(dloverwrite16) ->
+  #{ backend => builtin_local
+   , type => ds
+   , n_shards => 16
+   , subscriptions => #{n_rt_workers => 0}
+   , transacations => #{idle_flush_interval => 0}
+   , payload_type => ?ds_pt_mqtt
+   , storage => {emqx_ds_storage_skipstream_lts_v2, #{typestamp_bytes => 1}}
+   };
+db_conf(dloverwrite32) ->
+  maps:merge(db_conf(dloverwrite16), #{n_shards => 32}).
 
 ?MEMO(run_test, Release, CBM, Cfg = #{db := DB, csv := CSV},
       begin
@@ -173,7 +175,7 @@ need_retest(Release, Experiment) ->
   newer(Sources, csv_file(Release, Experiment)).
 
 loadgen_app_path() ->
-  #{ebin_dir := Dir} = anvl_erlc:app_info(default, loadtestds),
+  #{ebin_dir := Dir} = anvl_erlc:app_info(default, dslt_experiments),
   filename:absname(filename:join(Dir, "ebin")).
 
 peer(Release) ->
@@ -181,9 +183,6 @@ peer(Release) ->
 
 csv_file(Release, Experiment) ->
   anvl_fn:workdir(["results", Release, Experiment ++ ".csv"]).
-
-csv_files(Experiment) ->
-  [csv_file(I, Experiment) || I <- [experiment, control]].
 
 release_dir(Release) ->
   anvl_fn:ensure_type(filename:join(root_dir(Release), "_build/emqx-enterprise/rel/emqx"),

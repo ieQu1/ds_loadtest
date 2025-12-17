@@ -64,6 +64,7 @@ test_dbs() ->
   , #{type => ds, db => d5l, replication_factor => 5, reads => local_preferred}
   , #{type => ds, db => d5L, replication_factor => 5, reads => leader_preferred}
   , #{type => ds, db => dl, backend => builtin_local}
+  , #{type => ds, db => dloverwrite, backend => builtin_local}
   ].
 
 create_dbs() ->
@@ -385,7 +386,8 @@ exec_test(CBM, UserOpts) ->
   io:format(CSV, "~s;~p;~p~n", [DatapointPrefix, run_time, RunTime]),
   %% Shutdown the sup in case of timeout:
   exit(Top, shutdown),
-  file:close(CSV),
+  ok = file:sync(CSV),
+  ok = file:close(CSV),
   Success.
 
 collect_replies(#s{ timeout = Timeout
@@ -403,7 +405,7 @@ collect_replies(#s{ timeout = Timeout
       io:format("Complete in ~p s~n~p~n", [Dt / 1_000_000, Reason]),
       CBM:post_test(Opts, Dt),
       %% Wait a little more to collect the rest of the messages:
-      collect_replies(S#s{timeout = 100, run_time = Dt});
+      collect_replies(S#s{timeout = 1000, run_time = Dt});
     {metric, M, Val} ->
       io:format(FD, "~s;~p;~p~n", [Prefix, M, Val]),
       collect_replies(S);

@@ -35,7 +35,7 @@ def sel_metric(df):
     return df[(df['Metric'] == 't')]
 
 # Parse CLI args and load data
-if len(sys.argv) < 3:
+if len(sys.argv) < 4:
     print(
         """
 Usage:
@@ -50,12 +50,12 @@ title = sys.argv[1]
 sweep_by = sys.argv[2]
 
 def read_csv(i):
-    filename = sys.argv[i]
+    filename = sys.argv[i+1]
     df = pd.read_csv(filename, sep=';')
-    df['File'] = i - 2
+    df['File'] = sys.argv[i]
     return df[(df['Metric'] == 't')]
 
-df = pd.concat([read_csv(i) for i in range(3, len(sys.argv))])
+df = pd.concat([read_csv(i) for i in range(3, len(sys.argv), 2)])
 
 partitions = sorted(df[sweep_by].unique())
 groups = measurement_groups(df, sweep_by)
@@ -92,5 +92,7 @@ for i in partitions:
 
 plt.tight_layout()
 plt.legend()
+fig.suptitle(title)
+
 fn = title + ".png"
 plt.savefig(fn)

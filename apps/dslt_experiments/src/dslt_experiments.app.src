@@ -1,0 +1,3 @@
+{application, dslt_experiments,
+ [ {applications, [kernel, stdlib]}
+ ]}.

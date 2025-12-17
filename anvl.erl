@@ -18,7 +18,7 @@ conf() ->
    }.
 
 init() ->
-  precondition(anvl_erlc:app_compiled(default, loadtestds)),
+  precondition([anvl_erlc:app_compiled(default, dslt_analysis), anvl_erlc:app_compiled(default, dslt_experiments)]),
   persistent_term:put(node_name_ctr, atomics:new(1, [])),
   %% Resource that excludes CPU-intensive tasks while running test
   ok = anvl_resource:declare(cleanroom, 1).
