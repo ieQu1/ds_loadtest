@@ -58,15 +58,15 @@ init(Conf = #{payload_size := _PS}) ->
 
 loop(MyId, Opts = #{payload_size := PS}, undefined) ->
   S = #s{ from = integer_to_binary(MyId)
-        , msg = list_to_binary([0 || _ <- lists:seq(1, PS)])
+        , msg = rand_bytes(PS)
         , topic = <<"t/", (integer_to_binary(MyId))/binary, "/foo">>
         },
   loop(MyId, Opts, S);
-loop(MyId, #{db := DB}, S) ->
+loop(MyId, #{db := DB, payload_size := PS}, S) ->
   ?with_metric(t,
                MyId,
                begin
-                 Msg = emqx_message:make(S#s.from, S#s.topic, S#s.msg),
+                 Msg = emqx_message:make(S#s.from, S#s.topic, rand_bytes(PS)),
                  store_retained(DB, Msg)
                end),
   S.
@@ -103,3 +103,6 @@ store_retained(DB, Msg = #message{topic = Topic}) ->
 
 active_gen() ->
   1.
+
+rand_bytes(PS) ->
+  list_to_binary([rand:uniform(256) - 1 || _ <- lists:seq(1, PS)]).

@@ -66,7 +66,7 @@
               , repeats => 100
               })
            || N <- [10_000],
-              PS <- [15_000]])
+              PS <- [10, 1_000, 15_000]])
       end).
 
 ?MEMO(local_system, Release,

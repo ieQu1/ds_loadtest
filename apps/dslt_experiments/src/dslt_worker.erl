@@ -43,16 +43,16 @@ worker_entrypoint(Fun, Opts = #{repeats := Repeats}, MyId, Parent, Trigger) ->
   receive
     {'DOWN', MRef, process, Trigger, _} ->
       try
-        T0 = os:perf_counter(microsecond),
+        T0 = os:system_time(microsecond),
         loop(Fun, MyId, Opts, undefined, Repeats),
-        T1 = os:perf_counter(microsecond),
+        T1 = os:system_time(microsecond),
         report_metric(w_start_time, MyId, T0),
         report_metric(w_stop_time, MyId, T1)
       catch EC:Err:Stack ->
           logger:error("Test worker ~p failed with reason ~p:~p~nStack: ~p", [MyId, EC, Err, Stack]),
           report_fail({EC, Err})
       after
-        report_complete()
+        report_complete(MyId)
       end
   end.
 
@@ -63,8 +63,9 @@ worker_entrypoint(Fun, Opts = #{repeats := Repeats}, MyId, Parent, Trigger) ->
 report_fail(Reason) ->
   get(parent) ! {fail, Reason}.
 
-report_complete() ->
-  get(parent) ! worker_done.
+report_complete(MyId) ->
+  get(parent) ! worker_done,
+  logger:info("worker is done ~p", [MyId]).
 
 loop(_Fun, _MyId, _Opts, _Acc, I) when I =< 0 ->
   ok;
