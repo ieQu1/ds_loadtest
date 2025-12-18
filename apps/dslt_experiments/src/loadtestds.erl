@@ -325,8 +325,9 @@ exec_test(CBM, DBConnOpts, ExperimentId, UserOpts) ->
               , test_timeout => infinity
               },
   {ok, Pid} = epgsql:connect(DBConnOpts),
+  io:format("=== Initializing ~p/~0p ===~n", [CBM, UserOpts]),
   #{test_timeout := TestTimeout, n := N} = Opts =
-    maps:merge(Defaults, maps:merge(CBM:defaults(), UserOpts)),
+    CBM:init(maps:merge(Defaults, maps:merge(CBM:defaults(), UserOpts))),
   io:format("=== Running ~p/~0p ===~n", [CBM, UserOpts]),
   put(parent, self()),
   %% Spawn a temporary process that will be monitored by all worker

@@ -4,7 +4,7 @@
 -module(experiment_overwrite).
 
 %% behavior callbacks:
--export([name/0, defaults/0, init/1, loop/3, post_test/2, metric_columns/0, metric_prefix/1]).
+-export([defaults/0, init/1, loop/3, post_test/2]).
 
 -include("loadtestds.hrl").
 
@@ -39,37 +39,30 @@
 %% behavior callbacks
 %%================================================================================
 
-name() ->
-  "overwrite".
-
 defaults() ->
   #{ payload_size => 100
    , n => 1000
    }.
 
-metric_columns() ->
-  ["DB", "PayloadSize", "Npubs"].
+init(Conf = #{payload_size := PS}) ->
+  Conf#{payloads => [rand_bytes(PS) || _ <- lists:seq(1, 1000)]}.
 
-metric_prefix(#{db := DB, payload_size := PSize, n := N}) ->
-  [DB, PSize, N].
-
-init(Conf = #{payload_size := _PS}) ->
-  Conf.
-
-loop(MyId, Opts = #{payload_size := PS}, undefined) ->
+loop(MyId, Opts = #{payloads := Payloads}, undefined) ->
   S = #s{ from = integer_to_binary(MyId)
-        , msg = rand_bytes(PS)
+        , msg = Payloads
         , topic = <<"t/", (integer_to_binary(MyId))/binary, "/foo">>
         },
   loop(MyId, Opts, S);
-loop(MyId, #{db := DB, payload_size := PS}, S) ->
+loop(MyId, #{db := DB, payload_size := PS}, S = #s{msg = [M | Rest]}) ->
   ?with_metric(t,
                MyId,
                begin
-                 Msg = emqx_message:make(S#s.from, S#s.topic, rand_bytes(PS)),
+                 Msg = emqx_message:make(S#s.from, S#s.topic, M),
                  store_retained(DB, Msg)
                end),
-  S.
+  S#s{msg = Rest};
+loop(MyId, Conf = #{payloads := Payloads = [_|_]}, S) ->
+  loop(MyId, Conf, S#s{msg = Payloads}).
 
 
 post_test(#{payload_size := PS, n := Nworkers, repeats := Repeats}, Time) ->
