@@ -6,7 +6,7 @@
         , create_dbs/0
         %% , counter_test/1
         %% , owned_counter_test/1
-        , exec_test/2
+        , exec_test/4
         ]).
 
 -include("loadtestds.hrl").
@@ -288,14 +288,16 @@ open_csv(#{csv := Filename}, ColumnNames) ->
 
 -record(s,
         { success = true :: boolean()
-        , csv_fd :: file:iodevice()
-        , csv_prefix :: binary()
         , t0 :: integer()
         , timeout :: timeout()
         , run_time :: non_neg_integer() | undefined
         , opts :: map()
         , cbm :: module()
         , n_remaining :: non_neg_integer()
+        , experiment_id :: integer()
+        , metric_ids = #{} :: #{atom() => integer()}
+        , db :: epgsql:connection()
+        , batch = [] :: [list()]
         }).
 
 %% 1. Start a supervision tree with `n_nodes' copies on random nodes
@@ -306,6 +308,8 @@ open_csv(#{csv := Filename}, ColumnNames) ->
 %% 3. Wait until all processes are done.
 -spec exec_test(
     module(),
+    map(),
+    integer(),
     #{
         n := pos_integer(),
         n_nodes => pos_integer(),
@@ -315,20 +319,15 @@ open_csv(#{csv := Filename}, ColumnNames) ->
     }
 ) ->
     boolean().
-exec_test(CBM, UserOpts) ->
+exec_test(CBM, DBConnOpts, ExperimentId, UserOpts) ->
   Defaults = #{ available_nodes => [node() | nodes()]
               , n_nodes => 1
               , test_timeout => infinity
               },
+  {ok, Pid} = epgsql:connect(DBConnOpts),
   #{test_timeout := TestTimeout, n := N} = Opts =
     maps:merge(Defaults, maps:merge(CBM:defaults(), UserOpts)),
-  ExperimentName = CBM:name(),
-  ColumnNames = CBM:metric_columns(),
-  MeasurementFields = CBM:metric_prefix(Opts),
-  CSV = open_csv(UserOpts, ColumnNames),
-  DatapointPrefix = iolist_to_binary(
-                      lists:join(";", [io_lib:format("~p", [I]) || I <- MeasurementFields])),
-  io:format("=== Running ~s/~s ===~n", [ExperimentName, DatapointPrefix]),
+  io:format("=== Running ~p/~0p ===~n", [CBM, UserOpts]),
   put(parent, self()),
   %% Spawn a temporary process that will be monitored by all worker
   %% processes. Its termination signals start of the test:
@@ -345,40 +344,40 @@ exec_test(CBM, UserOpts) ->
   %% Now when the setup is complete, let's broadcast that it's time
   %% to start the test:
   Trigger ! pull,
+  self() ! flush,
   %% Start collecting messages until supervisor terminates:
   #s{ success = Success
     , run_time = RunTime
-    } = collect_replies(#s{ csv_fd = CSV
-                          , csv_prefix = DatapointPrefix
-                          , t0 = erlang:system_time(microsecond)
+    } = collect_replies(#s{ t0 = erlang:system_time(microsecond)
                           , timeout = TestTimeout
                           , opts = Opts
                           , cbm = CBM
                           , n_remaining = N
+                          , experiment_id = ExperimentId
+                          , db = Pid
                           }),
-  io:format(CSV, "~s;~p;~p~n", [DatapointPrefix, run_time, RunTime]),
   %% Shutdown the sup in case of timeout:
   ds_loadtest_sup:stop(),
-  ok = file:sync(CSV),
-  ok = file:close(CSV),
   Success.
 
 collect_replies(#s{n_remaining = 0, t0 = T0, success = Success, cbm = CBM, opts = Opts} = S) ->
   Dt = erlang:system_time(microsecond) - T0,
   io:format("Complete in ~p s~n~p~n", [Dt / 1_000_000, Success]),
   CBM:post_test(Opts, Dt),
-  S#s{run_time = Dt};
+  flush(S#s{run_time = Dt});
 collect_replies(#s{ timeout = Timeout
-                  , csv_fd = FD
-                  , csv_prefix = Prefix
+                  , batch = Batch
+                  , db = Pid
                   , n_remaining = N
+                  , experiment_id = Exp
                   } = S) ->
   receive
     worker_done ->
       collect_replies(S#s{n_remaining = N - 1});
-    {metric, M, Val} ->
-      io:format(FD, "~s;~p;~p~n", [Prefix, M, Val]),
-      collect_replies(S);
+    #cast_metric{metric = M, t = Time, worker = Worker, val = Val} ->
+      collect_replies(handle_metric(M, Time, Worker, Val, S));
+    flush ->
+      collect_replies(flush(S));
     {fail, _} ->
       collect_replies(S#s{success = false})
   after Timeout ->
@@ -404,3 +403,29 @@ multicall(Fun) ->
   Nodes = [node() | nodes()],
   {_, []} = rpc:multicall(Nodes, erlang, apply, [Fun, []]),
   ok.
+
+handle_metric(Metric, Time, Worker, Val, S = #s{db = Pid, metric_ids = Metrics0, experiment_id = Exp, batch = Batch}) ->
+  case Metrics0 of
+    #{Metric := MetricId} ->
+      Metrics = Metrics0;
+    #{} ->
+      {ok, _, [{MetricId}]} = epgsql:equery(
+                                Pid,
+                                "SELECT metric_id($1)",
+                                [atom_to_binary(Metric)]),
+      Metrics = Metrics0#{Metric => MetricId}
+  end,
+  Sample = [MetricId, Time / 1_000_000, Exp, Worker, Val],
+  S#s{metric_ids = Metrics, batch = [Sample | Batch]}.
+
+flush(S = #s{db = Pid, batch = Batch}) ->
+  Res = epgsql:execute_batch(
+                 Pid,
+                 "INSERT INTO sample VALUES ($1, to_timestamp($2), $3, $4, $5)",
+                 lists:reverse(Batch)),
+  case Res of
+    {[], []} -> ok;
+    {[], [{ok, _} | _]} -> ok
+  end,
+  erlang:send_after(1000, self(), flush),
+  S#s{batch = []}.

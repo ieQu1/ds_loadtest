@@ -1,3 +1,4 @@
+drop view if exists samples;
 drop table if exists sample;
 drop table if exists experiment;
 drop table if exists ds_db;

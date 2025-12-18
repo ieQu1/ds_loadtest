@@ -62,8 +62,9 @@ loop(MyId, Opts = #{payload_size := PS}, undefined) ->
         , topic = <<"t/", (integer_to_binary(MyId))/binary, "/foo">>
         },
   loop(MyId, Opts, S);
-loop(_MyId, #{db := DB}, S) ->
+loop(MyId, #{db := DB}, S) ->
   ?with_metric(t,
+               MyId,
                begin
                  Msg = emqx_message:make(S#s.from, S#s.topic, S#s.msg),
                  store_retained(DB, Msg)
@@ -73,12 +74,9 @@ loop(_MyId, #{db := DB}, S) ->
 
 post_test(#{payload_size := PS, n := Nworkers, repeats := Repeats}, Time) ->
   BytesWritten = PS * Nworkers * Repeats,
-  Throughput = BytesWritten / Time,
   %% Note: B/μs = MB/S
-  io:format("Written ~p MB~nTime: ~ps~nThroughput ~p MB/s~n",
-            [BytesWritten / 1_000_000, Time / 1_000_000, Throughput]),
-  dslt_worker:report_metric(throughput, Throughput),
-  dslt_worker:report_metric(tps, 1_000_000 * Nworkers * Repeats / Time).
+  io:format("Written ~p MB~nTime: ~ps~n",
+            [BytesWritten / 1_000_000, Time / 1_000_000]).
 
 %%================================================================================
 %% Internal exports

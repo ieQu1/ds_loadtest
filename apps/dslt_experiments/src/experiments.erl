@@ -111,24 +111,26 @@ load_test_code(Peer) ->
 ?MEMO(db_created, Release, DB,
       begin
         precondition(local_system(Release)),
-        Defaults = #{ db => DB
-                    , backend => builtin_raft
-                    , n_shards => 16
-                    , replication_options => #{}
-                    , n_sites => 5
-                    , replication_factor => 5
-                    , storage => {emqx_ds_storage_skipstream_lts_v2, #{}}
-                    , transaction => #{ flush_interval => 1
-                                      , idle_flush_interval => 0
-                                      , conflict_window => 10_000
-                                      }
-                    , reads => local_preferred
-                    },
-        Conf = maps:merge(Defaults, db_conf(DB)),
-        Id = dslt_collect:decl_db(Conf),
+        Conf = full_db_conf(DB),
         ok = peer:call(peer(Release), loadtestds, create_db, [Conf], infinity),
         true
       end).
+
+full_db_conf(DB) ->
+  Defaults = #{ db => DB
+              , backend => builtin_raft
+              , n_shards => 16
+              , replication_options => #{}
+              , n_sites => 5
+              , replication_factor => 5
+              , storage => {emqx_ds_storage_skipstream_lts_v2, #{}}
+              , transaction => #{ flush_interval => 1
+                                , idle_flush_interval => 0
+                                , conflict_window => 10_000
+                                }
+              , reads => local_preferred
+              },
+  maps:merge(Defaults, db_conf(DB)).
 
 db_conf(dloc) ->
   #{ backend => builtin_local
@@ -160,6 +162,7 @@ db_conf(dloverwrite32) ->
         Name = CBM:name(),
         need_retest(Release, Name) andalso
           begin
+            ExpId = dslt_collect:start_experiment(CBM, Release, full_db_conf(DB), Cfg),
             _ = file:delete(CSV),
             precondition(db_created(Release, DB)),
             anvl_resource:with(
@@ -170,10 +173,11 @@ db_conf(dloverwrite32) ->
                              peer(Release),
                              loadtestds,
                              exec_test,
-                             [CBM, Cfg],
+                             [CBM, dslt_collect:db_conf(), ExpId, Cfg],
                              infinity),
                   logger:warning("Complete test with result ~p", [Result])
               end),
+            dslt_collect:complete_experiment(os:system_time(second)),
             true
           end
       end).

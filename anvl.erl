@@ -15,8 +15,15 @@ conf() ->
           , repo => "https://github.com/emqx/emqx.git"
           , ref => {branch, "release-60"}
           }
+       , #{ id => epgsql
+          , repo => "https://github.com/epgsql/epgsql.git"
+          , ref => {tag, "4.8.0"}
+          }
        ]
    }.
+
+conf_override(_) ->
+  [{set, [plugins], [anvl_erlc, anvl_git]}].
 
 append_test() ->
   experiments:append_test().

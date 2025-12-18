@@ -16,7 +16,15 @@
 -ifndef(LOADTESTDS_HRL).
 -define(LOADTESTDS_HRL, true).
 
--define(with_metric(METRIC, BODY), dslt_worker:with_metric(METRIC, fun() -> BODY end)).
+-define(with_metric(METRIC, ID, BODY), dslt_worker:with_metric(METRIC, ID, fun() -> BODY end)).
+
+-record(cast_metric,
+        { metric :: atom()
+        , t :: integer()
+        , worker :: integer() | undefined
+        , val :: integer()
+        }).
+
 -include("emqx_ds.hrl").
 
 -endif.

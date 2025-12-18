@@ -38,10 +38,32 @@ init_for_project(_) ->
 model() ->
   #{ dslt =>
        #{ results_db =>
-            {[value, os_env],
-             #{ type => typerefl:string()
-              , default => "DSN=PostgreSQL;UID=postgres"
-              }}
+            #{ host =>
+                 {[value, os_env],
+                  #{ type => typerefl:string()
+                   , default => "localhost"
+                   }}
+             , username =>
+                 {[value, os_env],
+                  #{ type => typerefl:string()
+                   , default => "postgres"
+                   }}
+             , port =>
+                 {[value, os_env],
+                  #{ type => typerefl:integer()
+                   , default => 5432
+                   }}
+             , db =>
+                 {[value, os_env],
+                  #{ type => typerefl:string()
+                   , default => "postgres"
+                   }}
+             , password =>
+                 {[value, os_env],
+                  #{ type => typerefl:string()
+                   , default => ""
+                   }}
+             }
         , data_dir =>
             {[value, os_env],
              #{ oneliner => "EMQX workdir"

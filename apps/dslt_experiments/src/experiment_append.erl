@@ -48,6 +48,7 @@ loop(MyId, Opts = #{db := DB, batch_size := BS, payload := Payload}, undefined) 
   loop(MyId, Opts, State);
 loop(MyId, #{db := DB}, {Shard, Batch} = State) ->
   ?with_metric(t,
+               MyId,
                begin
                  Ref = emqx_ds:dirty_append(#{db => DB, shard => Shard, reply => true}, Batch),
                  receive
@@ -65,12 +66,9 @@ loop(MyId, #{db := DB}, {Shard, Batch} = State) ->
 post_test(#{payload_size := PS, batch_size := BS, n := Nworkers, repeats := Repeats}, Time) ->
   Nops = BS * Nworkers * Repeats,
   BytesWritten = PS * Nops,
-  Throughput = BytesWritten / Time,
   %% Note: B/μs = MB/S
-  io:format("Written ~p MB~nTime: ~ps~nThroughput ~p MB/s~n",
-            [BytesWritten / 1_000_000, Time / 1_000_000, Throughput]),
-  dslt_worker:report_metric(throughput, Throughput),
-  dslt_worker:report_metric(tps, 1_000_000 * Nops / Time).
+  io:format("Written ~p MB~nTime: ~ps~n",
+            [BytesWritten / 1_000_000, Time / 1_000_000]).
 
 %%================================================================================
 %% Internal functions
