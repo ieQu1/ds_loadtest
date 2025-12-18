@@ -5,7 +5,7 @@ create table if not exists metric_id (
   id SMALLSERIAL PRIMARY KEY
 );
 
-insert into metric_id VALUES ('t'), ('worker_start_time'), ('worker_stop_time')
+insert into metric_id VALUES ('t'), ('w_start_time'), ('w_stop_time')
 on conflict do nothing;
 
 create table if not exists ds_db (
@@ -28,6 +28,10 @@ create table if not exists experiment (
   batch_size INTEGER,
   id SERIAL PRIMARY KEY
 );
+
+create or replace view experiments as
+  select db_name as db, backend, n_shards, n_replicas, config as db_config, scenario, release, completed_at, repeats, n_workers, payload_size, batch_size, experiment.id
+  from experiment inner join ds_db on experiment.db = ds_db.id;
 
 create table if not exists sample (
   metric SMALLINT references metric_id(id) NOT NULL,
@@ -102,6 +106,18 @@ begin
   dt := (select max(val) from samples where metric = 'w_stop_time' and experiment = exp) -
         (select min(val) from samples where metric = 'w_start_time' and experiment = exp);
   n := (select count(1) from samples where metric = 't' and experiment = exp);
-  return (n * 1e9) / dt;
+  return (n * 1e6) / dt;
+end;
+$$ language plpgsql;
+
+
+create or replace function compute_throughput(exp INTEGER)
+returns FLOAT
+as $$
+declare
+  ps INTEGER;
+begin
+  ps := (select payload_size from experiment where id = exp);
+  return (select compute_tps(exp) * ps * 1e-6);
 end;
 $$ language plpgsql;

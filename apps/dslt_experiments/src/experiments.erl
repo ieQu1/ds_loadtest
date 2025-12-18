@@ -26,11 +26,11 @@
 
 ?MEMO(overwrite_test,
       begin
-        Releases = [experiment, control],
-        precondition([overwrite_test(I, dloverwrite32) || I <- Releases]),
-        precondition([ dslt_analysis:vs_graph("overwrite", "PayloadSize", Releases)
-                     , dslt_analysis:throughput("overwrite", "PayloadSize", Releases)
-                     ])
+        Releases = [experiment],
+        precondition([overwrite_test(I, dloverwrite16) || I <- Releases])%,
+        %% precondition([ dslt_analysis:vs_graph("overwrite", "PayloadSize", Releases)
+        %%              , dslt_analysis:throughput("overwrite", "PayloadSize", Releases)
+        %%              ])
       end).
 
 %%================================================================================
@@ -63,11 +63,10 @@
              #{ db => DB
               , payload_size => PS
               , n => N
-              , csv => csv_file(Release, "overwrite")
-              , repeats => 10
+              , repeats => 100
               })
-           || N <- [1_000],
-              PS <- [10, 100, 1000]])
+           || N <- [10_000],
+              PS <- [15_000]])
       end).
 
 ?MEMO(local_system, Release,
@@ -157,13 +156,11 @@ db_conf(dloverwrite16) ->
 db_conf(dloverwrite32) ->
   maps:merge(db_conf(dloverwrite16), #{n_shards => 32}).
 
-?MEMO(run_test, Release, CBM, Cfg = #{db := DB, csv := CSV},
+?MEMO(run_test, Release, CBM, Cfg = #{db := DB},
       begin
-        Name = CBM:name(),
-        need_retest(Release, Name) andalso
+        need_retest(CBM, Release, Cfg) andalso
           begin
             ExpId = dslt_collect:start_experiment(CBM, Release, full_db_conf(DB), Cfg),
-            _ = file:delete(CSV),
             precondition(db_created(Release, DB)),
             anvl_resource:with(
               cleanroom,
@@ -190,10 +187,11 @@ get_node_name() ->
 %% This function compares mtime of the output CSV file against all the
 %% sources that go into the experiment, namely loadgen and EMQX
 %% build artifacts.
-need_retest(Release, Experiment) ->
+need_retest(CBM, Release, Conf) ->
   Sources = filelib:wildcard(filename:join(loadgen_app_path(), "**")) ++
     filelib:wildcard(filename:join(release_dir(Release), "{bin,lib,etc,plugins,releases}/**")),
-  newer(Sources, csv_file(Release, Experiment)).
+  %newer(Sources, csv_file(Release, Experiment)).
+  true.
 
 loadgen_app_path() ->
   #{ebin_dir := Dir} = anvl_erlc:app_info(default, dslt_experiments),

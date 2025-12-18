@@ -427,5 +427,5 @@ flush(S = #s{db = Pid, batch = Batch}) ->
     {[], []} -> ok;
     {[], [{ok, _} | _]} -> ok
   end,
-  erlang:send_after(1000, self(), flush),
+  erlang:send_after(10, self(), flush),
   S#s{batch = []}.

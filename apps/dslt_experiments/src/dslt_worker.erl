@@ -46,7 +46,6 @@ worker_entrypoint(Fun, Opts = #{repeats := Repeats}, MyId, Parent, Trigger) ->
         T0 = os:perf_counter(microsecond),
         loop(Fun, MyId, Opts, undefined, Repeats),
         T1 = os:perf_counter(microsecond),
-        report_metric(run_time, MyId, T1 - T0),
         report_metric(w_start_time, MyId, T0),
         report_metric(w_stop_time, MyId, T1)
       catch EC:Err:Stack ->
